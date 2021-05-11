@@ -12,7 +12,7 @@ int main()
 	pcap_t* adhandle;
 	char errbuf[PCAP_ERRBUF_SIZE];
 	u_int netmask;
-	char packet_filter[] = "ip and udp";
+	char packet_filter[] = "tcp";
 	struct bpf_program fcode;
 #ifdef FROM_NIC
 	/* Retrieve the device list */
@@ -110,13 +110,7 @@ int main()
 	pcap_freealldevs(alldevs);
 
 	/* start the capture */
-	time_and_pkt* tap=new time_and_pkt[1000];//用于存储接收到的包的时间及包的内容
-	for (int i = 0; i < 1000; i++)
-	{
-		time_and_pkt* j = (tap + i * sizeof(time_and_pkt*));
-		j->pkt = NULL;
-	}
-	pcap_loop(adhandle, 0, packet_handler, (u_char*)tap);
+	pcap_loop(adhandle, 0, packet_handler, NULL);
 #else
 	/* Open the capture file */
 	if ((adhandle = pcap_open_offline("C:\\Users\\BD\\Desktop\\aa.pcap",			// name of the device
@@ -149,17 +143,6 @@ void packet_handler(u_char* param, const struct pcap_pkthdr* header, const u_cha
 	/*
 	 * unused parameter
 	 */
-	(time_and_pkt*)(param);
-	time_and_pkt* tak = (time_and_pkt*)param;
-	for (int i = 0; i < 1000; i++)
-	{
-		time_and_pkt* j = (time_and_pkt*)param;
-		tak = (j + i * sizeof(time_and_pkt*));
-		if (tak->pkt == NULL)
-			break;
-	}
-
-	
 	FILE* file = fopen("data.csv", "a+");
 
 	/* convert the timestamp to readable format */
@@ -168,109 +151,7 @@ void packet_handler(u_char* param, const struct pcap_pkthdr* header, const u_cha
 	//strftime(timestr, sizeof timestr, "%H:%M:%S,", ltime);
 	time_t tt = time(NULL);//这句返回的只是一个时间cuo
 	tm* t = localtime(&tt);
-	fprintf_s(file, "%02d-%02d-%02d %02d:%02d:%02d,", t->tm_year + 1900, t->tm_mon + 1, t->tm_mday, t->tm_hour, t->tm_min, t->tm_sec);
-	//printf("%02d-%02d-%02d %02d:%02d:%02d,", t->tm_year + 1900, t->tm_mon + 1, t->tm_mday, t->tm_hour, t->tm_min, t->tm_sec);
 
-	//存储当前包的时间
-	tak->minute = t->tm_min;
-	tak->pkt = pkt_data;
-	time_and_pkt* taki = (time_and_pkt*)param;
-	if (tak->minute == taki->minute + 1)//隔1分钟发送来自不同地址包的长度
-	{
-		//检查有几个不同的ip及mac
-		u_char* msrc[100] = { NULL };
-		u_char* isrc[100] = { NULL };
-		u_char* mdest[100] = { NULL };
-		u_char* idest[100] = { NULL };
-		int ft[100] = { 0 };//按源分的包总长
-		int tt[100] = { 0 };//按目的分的包总长
-		int j = 0;
-		for (; taki <= tak; taki += sizeof(time_and_pkt))
-		{
-			j = 0;
-			mac_header* mach = (mac_header*)taki->pkt;
-			ip_header* iph = (ip_header*)(taki->pkt + sizeof(mac_header));
-			//检查有几个不同的源ip
-			while (msrc[j] != NULL)
-			{
-				if (!(mach->src_addr[0] == msrc[j][0] && mach->src_addr[1] == msrc[j][1] && mach->src_addr[2] == msrc[j][2] && mach->src_addr[3] == msrc[j][3]
-					&& mach->src_addr[4] == msrc[j][4] && mach->src_addr[5] == msrc[j][5]))
-					j++;
-				else
-					break;
-			}				
-			if (msrc[j] == NULL)
-			{
-				msrc[j] = mach->src_addr;
-				isrc[j] = iph->saddr;
-			}				
-			ft[j] += iph->tlen;
-			//printf("%d\n", ntohs(ft[j]));
-
-			//检查有几个不同的目的ip
-			j = 0;
-			while (mdest[j] != NULL)
-			{
-				if (!(mach->dest_addr[0] == mdest[j][0] && mach->dest_addr[1] == mdest[j][1] && mach->dest_addr[2] == mdest[j][2] && mach->dest_addr[3] == mdest[j][3]
-					&& mach->dest_addr[4] == mdest[j][4] && mach->dest_addr[5] == mdest[j][5]))
-					j++;
-				else
-					break;
-			}
-			if (mdest[j] == NULL)
-			{
-				mdest[j] = mach->dest_addr;
-				idest[j] = iph->daddr;
-			}
-			tt[j] += iph->tlen;
-			//printf("%d\n", ntohs(tt[j]));
-		}
-		cout << "-----one minute later-----" << endl;
-		//输出每个源mac在上一分钟的总传输长度
-		for (j = 0; ft[j] != 0; j++)
-		{
-			cout << "data from:";
-			for (int b = 0; b < 5; b++) {
-				//源MAC地址
-				printf("%02X-", msrc[j][b]);
-			}
-			printf("%02X,", msrc[j][5]);
-			for (int b = 0; b < 3; b++) {
-				//源IP地址
-				printf("%d.", isrc[j][b]);
-			}
-			printf("%d,", isrc[j][3]);
-			cout << "total length:";
-			printf("%d\n", ntohs(ft[j]));
-		}
-		//输出每个目的mac在上一分钟的总传输长度
-		for (j = 0; tt[j] != 0; j++)
-		{
-			cout << "data to:";
-			for (int b = 0; b < 5; b++) {
-				//目的MAC地址
-				printf("%02X-", mdest[j][b]);
-			}
-			printf("%02X,", mdest[j][5]);
-			for (int b = 0; b < 3; b++) {
-				//目的IP地址
-				printf("%d.", idest[j][b]);
-			}
-			printf("%d,", idest[j][3]);
-			cout << "total length:";
-			printf("%d\n", ntohs(tt[j]));
-		}
-		//输出结束后清空存储一分钟内数据的数组
-		time_and_pkt* czt = (time_and_pkt*)param;
-		for (int i = 0; i < 1000; i++)
-		{
-			if ((czt + i * sizeof(time_and_pkt*))->pkt == NULL)
-				break;
-			(czt + i * sizeof(time_and_pkt*))->pkt = NULL;
-			(czt + i * sizeof(time_and_pkt*))->minute = 0;
-		}
-
-	}
 
 	mh = (mac_header*)pkt_data;
 
@@ -286,7 +167,77 @@ void packet_handler(u_char* param, const struct pcap_pkthdr* header, const u_cha
 	//dport = ntohs(uh->dport);
 
 	/* print ip addresses and udp ports */
-	/*for (int i = 0; i < 5; i++) {
+	u_char* ftp_command = (u_char*)(pkt_data + sizeof(mac_header) + sizeof(ip_header) + 16 * sizeof(u_char));
+
+	if (ftp_command[0] == 'U' && ftp_command[1] == 'S' && ftp_command[2] == 'E' && ftp_command[3] == 'R')
+	{
+		fprintf_s(file, "%02d-%02d-%02d %02d:%02d:%02d,", t->tm_year + 1900, t->tm_mon + 1, t->tm_mday, t->tm_hour, t->tm_min, t->tm_sec);
+		//printf("%02d-%02d-%02d %02d:%02d:%02d,", t->tm_year + 1900, t->tm_mon + 1, t->tm_mday, t->tm_hour, t->tm_min, t->tm_sec);
+		for (int i = 0; i < 5; i++) {
+			fprintf_s(file, "%02X-", mh->src_addr[i]);//源MAC地址
+			printf("%02X-", mh->src_addr[i]);
+		}
+		fprintf_s(file, "%02X,", mh->src_addr[5]);
+		printf("%02X,", mh->src_addr[5]);
+		for (int i = 0; i < 3; i++) {
+			fprintf_s(file, "%d.", ih->saddr[i]);//源IP地址
+			printf("%d.", ih->saddr[i]);
+		}
+		fprintf_s(file, "%d,", ih->saddr[3]);
+		printf("%d,", ih->saddr[3]);
+		for (int i = 0; i < 5; i++) {
+			fprintf_s(file, "%02X-", mh->dest_addr[i]);//目的MAC地址
+			printf("%02X-", mh->dest_addr[i]);
+		}
+		fprintf_s(file, "%02X,", mh->dest_addr[5]);
+		printf("%02X,", mh->dest_addr[5]);
+		for (int i = 0; i < 3; i++) {
+			fprintf_s(file, "%d.", ih->daddr[i]);//目的IP地址
+			printf("%d.", ih->daddr[i]);
+		}
+		fprintf_s(file, "%d,", ih->daddr[3]);
+		printf("%d,", ih->daddr[3]);
+		u_char* a = ftp_command;
+		while (a[4] != 0x0d)
+		{
+			printf("%c", a[4]);
+			fprintf_s(file, "%c", a[4]);
+			a += sizeof(u_char);
+		}
+		printf(",");
+		fputc(',', file);
+	}
+	if (ftp_command[0] == 'P' && ftp_command[1] == 'A' && ftp_command[2] == 'S' && ftp_command[3] == 'S')
+	{
+		u_char* a = ftp_command;
+		while (a[4] != 0x0d)
+		{
+			printf("%c", a[4]);
+			fprintf_s(file, "%c", a[4]);
+			a += sizeof(u_char);
+		}
+		printf(",");
+		fputc(',', file);
+	}
+	if (ftp_command[0] == '5' && ftp_command[1] == '3' && ftp_command[2] == '0' && ftp_command[3] == ' ')
+	{
+		char a[] = "FAILED";
+		printf("%s", a);
+		fprintf_s(file, "%s", a);
+		printf("\n");
+		fprintf_s(file, "\n");
+	}
+	if (ftp_command[0] == '2' && ftp_command[1] == '3' && ftp_command[2] == '0' && ftp_command[3] == ' ')
+	{
+		char a[] = "SUCCEED";
+		printf("%s", a);
+		fprintf_s(file, "%s", a);
+		printf("\n");
+		fprintf_s(file, "\n");
+	}
+	/*fprintf_s(file, "%02d-%02d-%02d %02d:%02d:%02d,", t->tm_year + 1900, t->tm_mon + 1, t->tm_mday, t->tm_hour, t->tm_min, t->tm_sec);
+	//printf("%02d-%02d-%02d %02d:%02d:%02d,", t->tm_year + 1900, t->tm_mon + 1, t->tm_mday, t->tm_hour, t->tm_min, t->tm_sec);
+	for (int i = 0; i < 5; i++) {
 		fprintf_s(file, "%02X-", mh->src_addr[i]);//源MAC地址
 		printf("%02X-", mh->src_addr[i]);
 	}
@@ -312,7 +263,7 @@ void packet_handler(u_char* param, const struct pcap_pkthdr* header, const u_cha
 	printf("%d,", ih->daddr[3]);
 	fprintf_s(file, "%d", ntohs(ih->tlen));
 	printf("%d", ntohs(ih->tlen));
-	printf("\n");*/
-	fputc('\n', file);
+	printf("\n");
+	fputc('\n', file);*/
 	fclose(file);
 }
